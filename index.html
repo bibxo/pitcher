@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pitcher - Pitch Up/Down Audio</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; padding: 20px; background: #f5f5f5; }
+  h1 { text-align: center; margin-bottom: 10px; }
+  label { display: block; margin-top: 15px; font-weight: bold; }
+  input[type="range"] { width: 100%; }
+  button { margin-top: 10px; padding: 10px; font-size: 16px; cursor: pointer; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
+  audio { width: 100%; margin-top: 15px; }
+  footer { margin-top: 40px; text-align: center; font-size: 14px; color: #555; }
+</style>
+</head>
+<body>
+
+<h1>Pitcher</h1>
+<p style="text-align:center;">Pitch Up/Down your audio easily</p>
+
+<label for="fileInput">Upload audio file:</label>
+<input type="file" id="fileInput" accept="audio/*" />
+
+<label>Or record from your mic:</label>
+<button id="recordBtn">Start Recording</button>
+<button id="stopBtn" disabled>Stop Recording</button>
+
+<label for="pitchControl">Pitch control (0.5x to 2x):</label>
+<input type="range" id="pitchControl" min="0.5" max="2" step="0.01" value="1" />
+
+<audio id="audio" controls></audio>
+
+<footer>Made by Bixrail</footer>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const recordBtn = document.getElementById('recordBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const pitchControl = document.getElementById('pitchControl');
+  const audioElement = document.getElementById('audio');
+
+  let audioContext;
+  let sourceNode;
+  let mediaRecorder;
+  let recordedChunks = [];
+  let currentBuffer;
+
+  // Play audio with pitch control
+  function playAudio(buffer) {
+    if (audioContext) audioContext.close();
+
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = buffer;
+
+    // Pitch control via playbackRate
+    sourceNode.playbackRate.value = pitchControl.value;
+
+    sourceNode.connect(audioContext.destination);
+    sourceNode.start();
+
+    sourceNode.onended = () => {
+      sourceNode.disconnect();
+    };
+  }
+
+  // Load file and play
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const arrayBuffer = await file.arrayBuffer();
+
+    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    audioContext.decodeAudioData(arrayBuffer, (buffer) => {
+      currentBuffer = buffer;
+      playAudio(buffer);
+    });
+  });
+
+  // Pitch slider changes playbackRate live if audio playing
+  pitchControl.addEventListener('input', () => {
+    if (sourceNode) {
+      sourceNode.playbackRate.value = pitchControl.value;
+    }
+  });
+
+  // Recording
+  recordBtn.addEventListener('click', async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Your browser does not support audio recording.');
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    recordedChunks = [];
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+      const arrayBuffer = await blob.arrayBuffer();
+
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      audioContext.decodeAudioData(arrayBuffer, (buffer) => {
+        currentBuffer = buffer;
+        playAudio(buffer);
+      });
+
+      audioElement.src = URL.createObjectURL(blob);
+    };
+
+    mediaRecorder.start();
+    recordBtn.disabled = true;
+    stopBtn.disabled = false;
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      recordBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+  });
+</script>
+
+</body>
+</html>
